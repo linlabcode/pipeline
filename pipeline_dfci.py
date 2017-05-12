@@ -270,6 +270,15 @@ fastqDelimiter = '::' #delimiter for pairs in fastqs
 #-------------------------------------------------------------------------#
 
 
+#-------------------------------------------------------------------------#
+#                                                                         #
+#                               UCSC TOOLS                                #
+#                                                                         #
+#-------------------------------------------------------------------------#
+
+#def makeTrackHub(dataFileList=[],analysis_name,wiggle_dir='',chrom_sizes,web_dir='/storage/cylin/web/Lin_Lab_Track_Hubs/',hub_name='',hub_short_lab='',hub_long_lab='',EMAIL='',fileType='bigWig',col='0,0,0')
+
+
 #============================================================================================================
 #============================================================================================================
 #============================================================================================================
@@ -4948,6 +4957,155 @@ def processGecko(dataFile,geckoFolder,namesList = [],overwrite=False,scoringMeth
 #                 break
 #     print(len(geneListFile))
 #     unParseTable(geneListFile,output,'')
+
+#==========================================================================
+#===================MAKE UCSC TRACKHUB FILES===============================
+#==========================================================================
+
+def makeTrackHub(dataFileList=[],analysis_name,wiggle_dir='',chrom_sizes,web_dir='/storage/cylin/web/Lin_Lab_Track_Hubs/',hub_name='',hub_short_lab='',hub_long_lab='',EMAIL='',fileType='bigWig',col='0,0,0'):
+    #dataFileList will take several data tables and use them to create a track hub. This will not include background samples, because they do not have wiggle files
+    #analysis_name is the name of your project
+    #wiggle_dir is the path to where the wiggle files for this analysis live; will default to '/storage/cylin/grail/projects/analysis_name/wiggles' if left blank
+    #chrom_sizes is a required file for wigToBigWig. You can make these by running fetchChromSizes on your assembly. These are also available for download from UCSC, too.
+    #web_dir is the path to the outward facing directory where your data will be accessible to the genome browser
+    #hub_name will default to the analysis name if left empty
+    #hub_short_lab is a short label description of the hub and defaults to the analysis name if left blank
+    #hub_long_lab is a long label description of the hub and will also default to the analysis name if left blank
+    #EMAIL is your e-mail address
+    #fileType is set to bigWig by default for this script, but trackhub supports several other file types. This can be updated in the future.
+    #col is the color of the tracks; default black. This can be edited on the UCSC genome browser as well
+
+
+    folderName = '{}{}'.format(
+    web_dir,
+    analysis_name
+    )
+
+    formatFolder(folderName,create=True)
+
+    group = web_dir.split('/')[2]
+    track_folder = web_dir.split('/web')[1]
+
+    urlBase = 'http://taco-wiki.grid.bcm.edu/'
+
+    allData = []
+    bgNames = []
+
+    #creates a large list from all data files selected to create track hub; removes background samples
+    for file in dataFileList:
+        dataTable = utils.parseTable(file,'\t')
+        for line in dataTable[1:]:
+            if line[4] != '' and line[4] =! 'NONE':
+                bgNames.append(line[4])
+        for line in dataTable[1:]:
+            for bg in bgNames:
+                if line[3] != bg:
+                    background = False
+                else:
+                    backgroud = True
+            if background == False:
+                allData.append(line)
+    print(allData)
+    
+    line1 = allData[0]
+    genome = line1[2].lower()
+
+    genomeFolderName = '{}{}'.format(
+        folderName,
+        genome
+        )
+
+    formatFolder(genomeFolderName,create=True)
+
+    hubTxt = '.hub.txt'
+    hubFileName = '{}{}'.format(
+        folderName,
+        hubTxt
+        )
+
+    #This is the file you will link to the genome browser that points to the other files in your track hub configuration
+    hubFile = open(hubfileName,'w')
+    #This is the name of the hub
+    hub_line = '{} {}'.format(
+        'hub',
+        analysis_name
+        )
+    hubFile.write(hub_line + '\n')
+
+    #this is a short label description of this hub
+    if hub_short_lab == '':
+        hub_short_lab_line = analysis_name
+    else:
+        hub_short_lab_line = hub_short_lab
+    hubFile.write(hub_short_lab_line+'\n')
+
+    #this is a long label description of this hub
+    if hub_long_lab == '':
+        hub_long_lab_line = analysis_name
+    else:
+        hub_long_lab_line = hub_long_lab
+    hubFile.write(hub_long_lab_line+'\n')
+
+    #points to genomes file
+    hubFile.write(analysis_name + '.genomes.txt' + '\n')
+
+    #this is the email for the person who set up this track hub
+    if EMAIL != '':
+        hubFile.write('email ' + EMAIL + '\n')
+    
+    hubFile.close()
+
+    genomeFileName = folderName + '/' + analysis_name + '.genomes.txt'
+
+    #This is the file that includes all genomes used in this track hub
+    genomesFile = open(genomesfileName,'w')
+
+    genomesFile.write('genome' + genome + '\n')
+    genomesFile.write('trackDb ' + genome'/trackDb.txt' + '\n')
+
+    genomesFile.close()
+
+    #This is the trackDb file which contains information about the files you are going to actually be visualizing
+
+    trackDbFileName = genomeFolderName + '/trackDb.txt'
+
+    trackDbFile = open(trackDbFileName,'w')
+
+    for line in allData:
+        name = line[3]
+        input_wig = name + '_treat_afterfiting_all.wig.gz'
+        bigwig_name = name + '.bw'
+        bigwig_out = '{}/{}'.format(
+            genomeFolderName,
+            bigwig_name
+            )
+        bw_cmd = '{} {} {} {}'.format(
+            'wigToBigWig -clip',
+            input_wig,
+            chrom_sizes,
+            bigwig_out
+            )
+
+        os.system('bw_cmd')
+
+        trackDbFile.write('track ' + name + '\n')
+        URL = '{} {}{}{}{}/{}'.format(
+            'bigDataUrl',
+            urlBase,
+            group,
+            track_folder,
+            genome,
+            bigwig_name
+            )
+
+        trackDbFile.write(URL + '\n')
+        trackDbFile.write('shortLabel '+ name + '\n')
+        trackDbFile.write('longLabel '+ name + '\n')
+        trackDbFile.write('type '+ type + '\n')
+        trackDbFile.write('color ' + col + '\n\n')
+
+    trackDbFile.close()
+
 
 
     
