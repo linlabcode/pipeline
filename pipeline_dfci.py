@@ -199,7 +199,8 @@ fastqDelimiter = '::' #delimiter for pairs in fastqs
 #FORMATTING MAPPING SIGNAL
 #def makeSignalTable(dataFile,gffFile,mappedFolder,namesList = [],medianNorm=False,output =''):
 
-
+#WRAPPING MAPPER
+#def map_regions(dataFile,gffList,mappedFolder,signalFolder,names_list=[],medianNorm=False,output=''):
 #MAKING GFF LISTS
 #def makeGFFListFile(mappedEnrichedFile,setList,output,annotFile=''):
 
@@ -2203,7 +2204,7 @@ def mapBams(dataFile,cellTypeList,gffList,mappedFolder,nBin = 200,overWrite =Fal
                 cmd1 = "python %s/bamToGFF_turbo.py -e %s -m %s -b %s -i %s -o %s" % (whereAmI,extension,nBin,fullBamFile,gffFile,outFile)
                 if rpm:
                     cmd1 += ' -r'
-                cmd1 += ' &'
+                #cmd1 += ' &'
                 print cmd1
                 os.system(cmd1)
 
@@ -2215,7 +2216,7 @@ def mapBams(dataFile,cellTypeList,gffList,mappedFolder,nBin = 200,overWrite =Fal
                     cmd1 = "python %s/bamToGFF_turbo.py -e %s -m %s -b %s -i %s -o %s" % (whereAmI,extension,nBin,fullBamFile,gffFile,outFile)
                     if rpm:
                         cmd1 += ' -r'
-                    cmd1 += ' &'
+                    #cmd1 += ' &'
 
                     print cmd1
                     os.system(cmd1)
@@ -2484,7 +2485,43 @@ def makeSignalTable(dataFile,gffFile,mappedFolder,namesList = [],medianNorm=Fals
         unParseTable(signalTable,output,'\t')
         return signalTable
 
+#==========================================================================
+#============================MAPPING WRAPPER===============================
+#==========================================================================
 
+def map_regions(dataFile,gffList,mappedFolder,signalFolder,names_list=[],medianNorm=False,output=''):
+
+    '''
+    making a normalized binding signal table at all regions
+    '''
+
+    #since each bam has different read lengths, important to carefully normalize quantification
+    dataDict = loadDataTable(dataFile)
+    dataFile_name = dataFile.split('/')[-1].split('.')[0]
+
+    if len(names_list) == 0:
+        names_list = dataDict.keys()
+    names_list.sort()
+    
+    for name in names_list:
+        bam = Bam(dataDict[name]['bam'])
+        read_length = bam.getReadLengths()[0]
+        bam_extension = 200-read_length
+        print('For dataset %s using an extension of %s' % (name,bam_extension))
+        mapBamsBatch(dataFile,gffList,mappedFolder,overWrite =False,namesList = [name],extension=bam_extension,rpm=True)
+
+    #want a signal table of all datasets to each gff
+    print('Writing signal tables for each gff:')
+    for gffFile in gffList:
+        gffName = gffFile.split('/')[-1].split('.')[0]
+        if len(output) == 0:
+            signal_table_path = '%s%s_%s_SIGNAL.txt' % (signalFolder,gffName,dataFile_name)
+        else:
+            signal_table_path = output
+        print(signal_table_path)
+        makeSignalTable(dataFile,gffFile,mappedFolder,names_list,medianNorm,output =signal_table_path)
+
+    return signal_table_path
 
 #==========================================================================
 #===================MAKING GFF LISTS=======================================
@@ -2912,7 +2949,7 @@ def callHeatPlotOrdered(dataFile,gffFile,namesList,orderByName,geneListFile,outp
         color = dataDict[name]['color']
         output = outputFolder + '%s_%s_%s_order.png' % (gffName,name,orderByName)
 
-        cmd = "R --no-save %s %s %s %s %s" % (referenceMappedGFF,mappedGFF,color,output,geneListFile)
+        cmd = "Rscript %sheatMapOrdered.R %s %s %s %s %s" % (pipelineFolder,referenceMappedGFF,mappedGFF,color,output,geneListFile)
         if relative:
             cmd += ' 1'
         else:
@@ -2921,8 +2958,8 @@ def callHeatPlotOrdered(dataFile,gffFile,namesList,orderByName,geneListFile,outp
         #now add the background stuff
         cmd += ' %s' % (backgroundGFF)
 
-        #now finish the command
-        cmd += ' < %s/heatMapOrdered.R &' % (whereAmI)
+
+
 
         print(cmd)
         os.system(cmd)
@@ -2941,8 +2978,9 @@ def callRose(dataFile,macsEnrichedFolder,parentFolder,namesList=[],extraMap = []
     '''
 
     dataDict = loadDataTable(dataFile)
-    
-
+    if len(namesList) == 0:
+        namesList = dataDict.keys()
+    print(namesList)
     #a timestamp to name this pipeline batch of files
     timeStamp =datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     #a random integer ticker to help name files
@@ -3006,7 +3044,8 @@ def callRose2(dataFile,macsEnrichedFolder,parentFolder,namesList=[],extraMap = [
     '''
 
     dataDict = loadDataTable(dataFile)
-    
+    if len(namesList) == 0:
+        namesList = dataDict.keys()
 
     #a timestamp to name this pipeline batch of files
     timeStamp =datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -3041,7 +3080,7 @@ def callRose2(dataFile,macsEnrichedFolder,parentFolder,namesList=[],extraMap = [
         else:
             macsFile = inputFile
         outputFolder = "%s%s_ROSE" % (parentFolder,name)
-
+        print(name)
         roseCmd = 'python ROSE2_main.py -g %s -i %s -r %s -o %s -t %s' % (genome,macsFile,bamFile,outputFolder,tss)
 
         if len(str(stitch)) > 0:
@@ -3073,6 +3112,8 @@ def callRose2Slurm(dataFile,macsEnrichedFolder,parentFolder,namesList=[],extraMa
 
     #load the data dict
     dataDict = loadDataTable(dataFile)
+    if len(namesList) == 0:
+        namesList = dataDict.keys()
 
 
     #for recording purposes
@@ -3284,7 +3325,7 @@ def makeCuffTable(dataFile,analysisName,gtfFile,cufflinksFolder,groupList=[],bas
 
 
     
-    rCmd = '#R --no-save %s %s %s %s TRUE < %snormalizeRNASeq.R\n' % (geneFPKMFile,rOutputFolder,analysisName,namesString,pipelineFolder)
+    rCmd = '#Rscript %snormalizeRNASeq.R %s %s %s %s TRUE\n' % (pipelineFolder,geneFPKMFile,rOutputFolder,analysisName,namesString)
 
     bashFile.write(rCmd)
     bashFile.close()
@@ -3354,9 +3395,9 @@ def makeCuffTableSlurm(dataFile,analysisName,gtfFile,cufflinksFolder,groupList=[
 
     ts = time.time()
     timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y%m%d_%Hh%Mm%Ss')
-    cmd = '#SBATCH --output=/storage/cylin/grail/slurm_out/cufflinks_%s_%s' % (name,timestamp) + '_%j.out # Standard output and error log'
+    cmd = '#SBATCH --output=/storage/cylin/grail/slurm_out/cufflinks_%s_%s' % (analysisName,timestamp) + '_%j.out # Standard output and error log'
     bashFile.write(cmd+'\n')
-    cmd = '#SBATCH -e /storage/cylin/grail/slurm_out/cufflinks_%s_%s' % (name,timestamp) + '_%j.err # Standard output and error log'
+    cmd = '#SBATCH -e /storage/cylin/grail/slurm_out/cufflinks_%s_%s' % (analysisName,timestamp) + '_%j.err # Standard output and error log'
     bashFile.write(cmd+'\n')
 
     cmd = 'pwd; hostname; date'
@@ -3419,7 +3460,8 @@ def makeCuffTableSlurm(dataFile,analysisName,gtfFile,cufflinksFolder,groupList=[
 
 
 
-    rCmd = '#R --no-save %s %s %s %s TRUE < %snormalizeRNASeq.R\n' % (geneFPKMFile,rOutputFolder,analysisName,namesString,pipelineFolder)
+
+    rCmd = '#Rscript %snormalizeRNASeq.R %s %s %s %s TRUE\n' % (pipelineFolder,geneFPKMFile,rOutputFolder,analysisName,namesString)
 
     bashFile.write(rCmd)
     bashFile.close()
