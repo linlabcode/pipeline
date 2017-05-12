@@ -53,7 +53,7 @@ print('\n\n')
 
 
 from utils import *
-
+import utils
 import datetime
 import subprocess
 import time
@@ -4962,7 +4962,7 @@ def processGecko(dataFile,geckoFolder,namesList = [],overwrite=False,scoringMeth
 #===================MAKE UCSC TRACKHUB FILES===============================
 #==========================================================================
 
-def makeTrackHub(dataFileList=[],analysis_name,wiggle_dir='',chrom_sizes,web_dir='/storage/cylin/web/Lin_Lab_Track_Hubs/',hub_name='',hub_short_lab='',hub_long_lab='',EMAIL='',fileType='bigWig',col='0,0,0'):
+def makeTrackHub(analysis_name,chrom_sizes, dataFileList=[], wiggle_dir='',web_dir='/storage/cylin/web/Lin_Lab_Track_Hubs/',hub_name='',hub_short_lab='',hub_long_lab='',EMAIL='',fileType='bigWig',col='0,0,0'):
     #dataFileList will take several data tables and use them to create a track hub. This will not include background samples, because they do not have wiggle files
     #analysis_name is the name of your project
     #wiggle_dir is the path to where the wiggle files for this analysis live; will default to '/storage/cylin/grail/projects/analysis_name/wiggles' if left blank
@@ -4987,6 +4987,8 @@ def makeTrackHub(dataFileList=[],analysis_name,wiggle_dir='',chrom_sizes,web_dir
     track_folder = web_dir.split('/web')[1]
 
     urlBase = 'http://taco-wiki.grid.bcm.edu/'
+    if wiggle_dir == '':
+        wiggle_dir = '/storage/cylin/grail/projects/'+analysis_name+'/wiggles/'
 
     allData = []
     bgNames = []
@@ -4995,73 +4997,69 @@ def makeTrackHub(dataFileList=[],analysis_name,wiggle_dir='',chrom_sizes,web_dir
     for file in dataFileList:
         dataTable = utils.parseTable(file,'\t')
         for line in dataTable[1:]:
-            if line[4] != '' and line[4] =! 'NONE':
-                bgNames.append(line[4])
-        for line in dataTable[1:]:
-            for bg in bgNames:
-                if line[3] != bg:
-                    background = False
-                else:
-                    backgroud = True
-            if background == False:
-                allData.append(line)
+            allData.append(line)
     print(allData)
     
     line1 = allData[0]
     genome = line1[2].lower()
 
-    genomeFolderName = '{}{}'.format(
+    genomeFolderName = '{}/{}'.format(
         folderName,
         genome
         )
 
     formatFolder(genomeFolderName,create=True)
+    if hub_name == '':
+        hub_name = analysis_name
 
     hubTxt = '.hub.txt'
-    hubFileName = '{}{}'.format(
+    hubFileName = '{}/{}{}'.format(
         folderName,
+        hub_name,
         hubTxt
         )
-
     #This is the file you will link to the genome browser that points to the other files in your track hub configuration
-    hubFile = open(hubfileName,'w')
+    hubFile = open(hubFileName,'w')
     #This is the name of the hub
     hub_line = '{} {}'.format(
         'hub',
-        analysis_name
+        hub_name
         )
     hubFile.write(hub_line + '\n')
 
     #this is a short label description of this hub
     if hub_short_lab == '':
-        hub_short_lab_line = analysis_name
+        hub_short_lab_line = 'shortLabel ' + hub_name
     else:
-        hub_short_lab_line = hub_short_lab
+        hub_short_lab_line = 'shortLabel ' + hub_short_lab
     hubFile.write(hub_short_lab_line+'\n')
 
     #this is a long label description of this hub
     if hub_long_lab == '':
-        hub_long_lab_line = analysis_name
+        hub_long_lab_line = 'longLabel ' + hub_name
     else:
-        hub_long_lab_line = hub_long_lab
+        hub_long_lab_line = 'longLabel ' + hub_long_lab
     hubFile.write(hub_long_lab_line+'\n')
 
     #points to genomes file
-    hubFile.write(analysis_name + '.genomes.txt' + '\n')
+    hubFile.write('genomesFile ' + analysis_name + '.genomes.txt' + '\n')
 
     #this is the email for the person who set up this track hub
     if EMAIL != '':
         hubFile.write('email ' + EMAIL + '\n')
+    else:
+        EMAIL = 'email@bcm.edu'
+        hubFile.write('email ' + EMAIL + '\n')
     
     hubFile.close()
 
-    genomeFileName = folderName + '/' + analysis_name + '.genomes.txt'
-
+    genomesFileName = folderName + '/' + analysis_name + '.genomes.txt'
+    print(genomesFileName)
     #This is the file that includes all genomes used in this track hub
-    genomesFile = open(genomesfileName,'w')
+    genomesFile = open(genomesFileName,'w')
 
-    genomesFile.write('genome' + genome + '\n')
-    genomesFile.write('trackDb ' + genome'/trackDb.txt' + '\n')
+    genomesFile.write('genome ' + genome + '\n')
+    genomesFile.write('trackDb ' + genome+'/trackDb.txt' + '\n')
 
     genomesFile.close()
 
@@ -5073,36 +5071,38 @@ def makeTrackHub(dataFileList=[],analysis_name,wiggle_dir='',chrom_sizes,web_dir
 
     for line in allData:
         name = line[3]
-        input_wig = name + '_treat_afterfiting_all.wig.gz'
+        input_wig = wiggle_dir+ name + '_treat_afterfiting_all.wig.gz'
         bigwig_name = name + '.bw'
         bigwig_out = '{}/{}'.format(
             genomeFolderName,
             bigwig_name
             )
-        bw_cmd = '{} {} {} {}'.format(
-            'wigToBigWig -clip',
-            input_wig,
-            chrom_sizes,
-            bigwig_out
-            )
+        if os.path.isfile(input_wig) == True:
+            bw_cmd = '{} {} {} {}'.format(
+                'wigToBigWig -clip',
+                input_wig,
+                chrom_sizes,
+                bigwig_out
+                )
+        
+            os.system(bw_cmd)
 
-        os.system('bw_cmd')
+            trackDbFile.write('track ' + name + '\n')
+            URL = '{} {}{}{}{}/{}/{}'.format(
+                'bigDataUrl',
+                urlBase,
+                group,
+                track_folder,
+                analysis_name,
+                genome,
+                bigwig_name
+                )
 
-        trackDbFile.write('track ' + name + '\n')
-        URL = '{} {}{}{}{}/{}'.format(
-            'bigDataUrl',
-            urlBase,
-            group,
-            track_folder,
-            genome,
-            bigwig_name
-            )
-
-        trackDbFile.write(URL + '\n')
-        trackDbFile.write('shortLabel '+ name + '\n')
-        trackDbFile.write('longLabel '+ name + '\n')
-        trackDbFile.write('type '+ type + '\n')
-        trackDbFile.write('color ' + col + '\n\n')
+            trackDbFile.write(URL + '\n')
+            trackDbFile.write('shortLabel '+ name + '\n')
+            trackDbFile.write('longLabel '+ name + '\n')
+            trackDbFile.write('type '+ fileType + '\n')
+            trackDbFile.write('color ' + col + '\n\n')
 
     trackDbFile.close()
 
